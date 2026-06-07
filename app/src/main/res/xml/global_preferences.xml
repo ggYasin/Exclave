@@ -413,6 +413,11 @@
         app:title="@string/cag_misc"
         app:initialExpandedChildrenCount="0">
         <SwitchPreference
+            app:icon="@drawable/ic_baseline_view_list_24"
+            app:key="showAllConfigsGroup"
+            app:summary="@string/show_all_configs_group_summary"
+            app:title="@string/show_all_configs_group" />
+        <SwitchPreference
             app:icon="@drawable/ic_social_emoji_symbols"
             app:key="showGroupName"
             app:title="@string/show_group_name_in_notification" />

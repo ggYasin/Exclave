@@ -110,7 +110,10 @@ class ConfigurationFragment @JvmOverloads constructor(
             position: Int, positionOffset: Float, positionOffsetPixels: Int
         ) {
             if (adapter.groupList.size > position) {
-                DataStore.selectedGroup = adapter.groupList[position].id
+                val groupId = adapter.groupList[position].id
+                if (groupId != Long.MAX_VALUE) {
+                    DataStore.selectedGroup = groupId
+                }
             }
         }
     }
@@ -918,6 +921,14 @@ class ConfigurationFragment @JvmOverloads constructor(
                     }
                 }
 
+                if (DataStore.showAllConfigsGroup) {
+                    val allGroup = ProxyGroup(
+                        id = Long.MAX_VALUE,
+                        name = app.getString(R.string.all_configs_group)
+                    )
+                    newGroupList.add(0, allGroup)
+                }
+
                 var selectedGroup = selectedItem?.groupId ?: DataStore.currentGroupId()
                 var set = false
                 if (selectedGroup > 0L) {
@@ -1189,7 +1200,7 @@ class ConfigurationFragment @JvmOverloads constructor(
                 undoManager = UndoSnackbarManager(activity as MainActivity, adapter)
             }
 
-            if (!parent.select && proxyGroup.type == GroupType.BASIC) {
+            if (!parent.select && proxyGroup.type == GroupType.BASIC && proxyGroup.id != Long.MAX_VALUE) {
                 ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
                     ItemTouchHelper.UP or ItemTouchHelper.DOWN, ItemTouchHelper.START
                 ) {
@@ -1368,7 +1379,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
 
             override suspend fun onAdd(profile: ProxyEntity) {
-                if (profile.groupId != proxyGroup.id) return
+                if (proxyGroup.id != Long.MAX_VALUE && profile.groupId != proxyGroup.id) return
 
                 configurationListView.post {
                     if (::undoManager.isInitialized) {
@@ -1382,7 +1393,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
 
             override suspend fun onUpdated(profile: ProxyEntity) {
-                if (profile.groupId != proxyGroup.id) return
+                if (proxyGroup.id != Long.MAX_VALUE && profile.groupId != proxyGroup.id) return
                 val index = configurationIdList.indexOf(profile.id)
                 if (index < 0) return
                 configurationListView.post {
@@ -1411,7 +1422,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
 
             override suspend fun onRemoved(groupId: Long, profileId: Long) {
-                if (groupId != proxyGroup.id) return
+                if (proxyGroup.id != Long.MAX_VALUE && groupId != proxyGroup.id) return
 
                 pendingDeletedIds.remove(profileId)
                 configurationListView.post {
@@ -1428,14 +1439,14 @@ class ConfigurationFragment @JvmOverloads constructor(
             override suspend fun groupRemoved(groupId: Long) = Unit
 
             override suspend fun groupUpdated(group: ProxyGroup) {
-                if (group.id != proxyGroup.id) return
-                proxyGroup = group
+                if (proxyGroup.id != Long.MAX_VALUE && group.id != proxyGroup.id) return
+                if (group.id == proxyGroup.id) proxyGroup = group
                 reloadProfiles()
             }
 
             override suspend fun groupUpdated(groupId: Long) {
-                if (groupId != proxyGroup.id) return
-                proxyGroup = SagerDatabase.groupDao.getById(groupId)!!
+                if (proxyGroup.id != Long.MAX_VALUE && groupId != proxyGroup.id) return
+                if (groupId == proxyGroup.id) proxyGroup = SagerDatabase.groupDao.getById(groupId)!!
                 reloadProfiles()
             }
 
@@ -1447,7 +1458,11 @@ class ConfigurationFragment @JvmOverloads constructor(
                 }
 
 
-                var newProfiles = SagerDatabase.proxyDao.getByGroup(proxyGroup.id)
+                var newProfiles = if (proxyGroup.id == Long.MAX_VALUE) {
+                    SagerDatabase.proxyDao.getAll()
+                } else {
+                    SagerDatabase.proxyDao.getByGroup(proxyGroup.id)
+                }
                 newProfiles = newProfiles.filter { it.id !in pendingDeletedIds }
                 when (proxyGroup.order) {
                     GroupOrder.BY_NAME -> {

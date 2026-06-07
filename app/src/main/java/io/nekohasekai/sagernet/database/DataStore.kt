@@ -91,7 +91,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
 
     fun currentGroupId(): Long {
         val currentSelected = selectedGroup
-        if (currentSelected > 0L) return currentSelected
+        if (currentSelected > 0L && currentSelected != Long.MAX_VALUE) return currentSelected
         val groups = SagerDatabase.groupDao.allGroups()
         if (groups.isNotEmpty()) {
             val groupId = groups[0].id
@@ -106,7 +106,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     fun currentGroup(): ProxyGroup {
         var group: ProxyGroup? = null
         val currentSelected = selectedGroup
-        if (currentSelected > 0L) {
+        if (currentSelected > 0L && currentSelected != Long.MAX_VALUE) {
             group = SagerDatabase.groupDao.getById(currentSelected)
         }
         if (group != null) return group
@@ -124,7 +124,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
 
     fun selectedGroupForImport(): Long {
         val current = currentGroup()
-        if (current.type == GroupType.BASIC) return current.id
+        if (current.type == GroupType.BASIC && current.id != Long.MAX_VALUE) return current.id
         val groups = SagerDatabase.groupDao.allGroups()
         return groups.find { it.type == GroupType.BASIC }!!.id
     }
@@ -141,6 +141,8 @@ object DataStore : OnPreferenceDataStoreChangeListener {
 
     var outboundDomainStrategyForServer by configurationStore.string(Key.OUTBOUND_DOMAIN_STRATEGY_FOR_SERVER) { "AsIs" }
     var bypassLan by configurationStore.boolean(Key.BYPASS_LAN) { true }
+
+    var showAllConfigsGroup by configurationStore.boolean(Key.SHOW_ALL_CONFIGS_GROUP)
 
     var allowAccess by configurationStore.boolean(Key.ALLOW_ACCESS)
     var speedInterval by configurationStore.stringToInt(Key.SPEED_INTERVAL)
