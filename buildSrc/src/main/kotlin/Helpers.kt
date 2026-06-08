@@ -199,6 +199,7 @@ fun Project.setupApp() {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 file("proguard-rules.pro")
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
         buildFeatures.aidl = true
         buildFeatures.buildConfig = true
@@ -227,7 +228,7 @@ fun Project.setupApp() {
                 (output as? VariantOutputImpl)?.let { variantOutputImpl ->
                     val versionName = variantOutputImpl.versionName.orNull.orEmpty()
                     variantOutputImpl.outputFileName.set(variantOutputImpl.outputFileName.get()
-                        .replace(project.name, "Exclave-$versionName")
+                        .replace(project.name, "Exclave-Clone-$versionName")
                         .replace("-release", "")
                         .replace("-oss", "")
                     )

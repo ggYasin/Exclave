@@ -526,7 +526,12 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
             R.id.action_clear_traffic_statistics -> {
                 runOnDefaultDispatcher {
-                    val profiles = SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    val groupId = DataStore.selectedGroup
+                    val profiles = if (groupId == Long.MAX_VALUE) {
+                        SagerDatabase.proxyDao.getAll()
+                    } else {
+                        SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    }
                     val toClear = mutableListOf<ProxyEntity>()
                     if (profiles.isNotEmpty()) for (profile in profiles) {
                         if (profile.tx != 0L || profile.rx != 0L) {
@@ -542,7 +547,12 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
             R.id.action_connection_test_clear_results -> {
                 runOnDefaultDispatcher {
-                    val profiles = SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    val groupId = DataStore.selectedGroup
+                    val profiles = if (groupId == Long.MAX_VALUE) {
+                        SagerDatabase.proxyDao.getAll()
+                    } else {
+                        SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    }
                     val toClear = mutableListOf<ProxyEntity>()
                     if (profiles.isNotEmpty()) for (profile in profiles) {
                         if (profile.status != 0) {
@@ -559,7 +569,12 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
             R.id.action_remove_duplicate -> {
                 runOnDefaultDispatcher {
-                    val profiles = SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    val groupId = DataStore.selectedGroup
+                    val profiles = if (groupId == Long.MAX_VALUE) {
+                        SagerDatabase.proxyDao.getAll()
+                    } else {
+                        SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    }
                     val toClear = mutableListOf<ProxyEntity>()
                     val uniqueProxies = LinkedHashSet<Protocols.Deduplication>()
                     for (p in profiles) {
@@ -610,7 +625,12 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
             R.id.action_connection_test_delete_unavailable -> {
                 runOnDefaultDispatcher {
-                    val profiles = SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    val groupId = DataStore.selectedGroup
+                    val profiles = if (groupId == Long.MAX_VALUE) {
+                        SagerDatabase.proxyDao.getAll()
+                    } else {
+                        SagerDatabase.proxyDao.getByGroup(DataStore.currentGroupId())
+                    }
                     val toClear = mutableListOf<ProxyEntity>()
                     if (profiles.isNotEmpty()) for (profile in profiles) {
                         if (profile.status != -1 && profile.status != 0 && profile.status != 1) {
@@ -662,6 +682,10 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
             R.id.action_update_subscription -> {
                 runOnDefaultDispatcher {
+                    if (DataStore.selectedGroup == Long.MAX_VALUE) {
+                        snackbar(R.string.group_not_a_subscription).show()
+                        return@runOnDefaultDispatcher
+                    }
                     val currentGroup = DataStore.currentGroup()
                     if (currentGroup.type == GroupType.SUBSCRIPTION) {
                         if (currentGroup.id !in GroupUpdater.updating) {
@@ -823,7 +847,12 @@ class ConfigurationFragment @JvmOverloads constructor(
 
         val mainJob = runOnDefaultDispatcher {
             val group = DataStore.currentGroup()
-            var profilesUnfiltered = SagerDatabase.proxyDao.getByGroup(group.id)
+            val groupId = DataStore.selectedGroup
+            var profilesUnfiltered = if (groupId == Long.MAX_VALUE) {
+                SagerDatabase.proxyDao.getAll()
+            } else {
+                SagerDatabase.proxyDao.getByGroup(group.id)
+            }
             profilesUnfiltered = profilesUnfiltered.filter {
                 !it.useBrowserForwarder()
             }
