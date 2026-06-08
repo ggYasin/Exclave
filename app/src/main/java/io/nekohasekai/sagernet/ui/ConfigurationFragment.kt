@@ -919,7 +919,7 @@ class ConfigurationFragment @JvmOverloads constructor(
         test.cancel = {
             mainJob.cancel()
             runOnDefaultDispatcher {
-                GroupManager.postReload(DataStore.currentGroupId())
+                GroupManager.postReload(DataStore.selectedGroup)
             }
         }
     }
@@ -958,7 +958,7 @@ class ConfigurationFragment @JvmOverloads constructor(
                     newGroupList.add(0, allGroup)
                 }
 
-                var selectedGroup = selectedItem?.groupId ?: DataStore.currentGroupId()
+                var selectedGroup = selectedItem?.groupId ?: DataStore.selectedGroup
                 var set = false
                 if (selectedGroup > 0L) {
                     selectedGroupIndex = newGroupList.indexOfFirst { it.id == selectedGroup }
@@ -1475,7 +1475,7 @@ class ConfigurationFragment @JvmOverloads constructor(
 
             override suspend fun groupUpdated(groupId: Long) {
                 if (proxyGroup.id != Long.MAX_VALUE && groupId != proxyGroup.id) return
-                if (groupId == proxyGroup.id) proxyGroup = SagerDatabase.groupDao.getById(groupId)!!
+                if (groupId == proxyGroup.id && groupId != Long.MAX_VALUE) proxyGroup = SagerDatabase.groupDao.getById(groupId)!!
                 reloadProfiles()
             }
 
