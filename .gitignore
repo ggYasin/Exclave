@@ -10,6 +10,9 @@ build/
 .externalNativeBuild
 .cxx
 local.properties
+/release.keystore
+*.jks
+*.p12
 /app/libs/
 /app/src/main/assets/exclave-core/*.dat
 /service_account_credentials.json

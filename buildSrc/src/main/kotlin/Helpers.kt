@@ -23,6 +23,7 @@ import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import com.android.build.api.variant.FilterConfiguration
 import com.android.build.api.variant.impl.VariantOutputImpl
 import org.apache.tools.ant.filters.StringInputStream
+import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.getByType
@@ -100,17 +101,44 @@ fun Project.setupAppCommon(projectName: String = "") {
     setupCommon(projectName)
 
     val lp = requireLocalProperties()
-    val keystorePwd = lp.getProperty("KEYSTORE_PASS") ?: System.getenv("KEYSTORE_PASS")
-    val alias = lp.getProperty("ALIAS_NAME") ?: System.getenv("ALIAS_NAME")
-    val pwd = lp.getProperty("ALIAS_PASS") ?: System.getenv("ALIAS_PASS")
+    val keystorePath = System.getenv("INCLAVE_KEYSTORE_PATH")
+    val keystorePwd = System.getenv("INCLAVE_KEYSTORE_PASSWORD")
+        ?: lp.getProperty("KEYSTORE_PASS")
+        ?: System.getenv("KEYSTORE_PASS")
+    val alias = System.getenv("INCLAVE_KEY_ALIAS")
+        ?: lp.getProperty("ALIAS_NAME")
+        ?: System.getenv("ALIAS_NAME")
+    val keyPwd = System.getenv("INCLAVE_KEY_PASSWORD")
+        ?: lp.getProperty("ALIAS_PASS")
+        ?: System.getenv("ALIAS_PASS")
+        ?: keystorePwd
+    val releaseSigningRequired = providers.gradleProperty("requireReleaseSigning")
+        .orNull.toBoolean() || gradle.startParameter.taskNames.any {
+        it.contains("release", ignoreCase = true)
+    }
+    val releaseSigningConfigured = !keystorePwd.isNullOrBlank() ||
+        !alias.isNullOrBlank() || !keystorePath.isNullOrBlank()
 
     androidApp.apply {
-        if (keystorePwd != null) {
+        if (releaseSigningRequired || releaseSigningConfigured) {
+            if (keystorePwd.isNullOrBlank()) {
+                throw GradleException("Release signing requires INCLAVE_KEYSTORE_PASSWORD")
+            }
+            if (alias.isNullOrBlank()) {
+                throw GradleException("Release signing requires INCLAVE_KEY_ALIAS")
+            }
+            val keystore = keystorePath?.let(::file) ?: rootProject.file("release.keystore")
+            if (!keystore.isFile) {
+                throw GradleException("Release signing keystore does not exist: ${keystore.absolutePath}")
+            }
             signingConfigs.create("release") {
-                storeFile = rootProject.file("release.keystore")
+                storeFile = keystore
+                storeType = "PKCS12"
                 storePassword = keystorePwd
                 keyAlias = alias
-                keyPassword = pwd
+                keyPassword = keyPwd
+                enableV1Signing = true
+                enableV2Signing = true
                 enableV3Signing = true
             }
         }
@@ -119,9 +147,7 @@ fun Project.setupAppCommon(projectName: String = "") {
         buildTypes.getByName("release") {
             @Suppress("UnstableApiUsage")
             vcsInfo.include = false
-            signingConfigs.findByName("release")?.let {
-                signingConfig = it
-            }
+            signingConfig = signingConfigs.findByName("release")
             ndk.debugSymbolLevel = "NONE"
         }
         buildTypes.getByName("debug") {
@@ -201,7 +227,6 @@ fun Project.setupApp() {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 file("proguard-rules.pro")
             )
-            signingConfig = signingConfigs.getByName("debug")
         }
         buildFeatures.aidl = true
         buildFeatures.buildConfig = true

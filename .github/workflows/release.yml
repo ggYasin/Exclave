@@ -1,116 +1,198 @@
 name: Release Build
+
 on:
   push:
-    branches:
-      - dev*
     tags:
-      - 'v*'
-    paths:
-      - "app/**"
-      - "buildSrc/**"
-      - "library/**"
-      - ".github/workflows/release.yml"
+      - "v*"
   workflow_dispatch:
     inputs:
-      release:
-        description: 'Release (y/n)'
-        required: false
-      prerelease:
-        description: 'Mark as pre-release (y/n)'
-        required: false
       tag:
-        description: 'Release Tag'
-        required: false
+        description: Release tag, for example v1.0.2
+        required: true
+        type: string
+      prerelease:
+        description: Mark as a pre-release
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
   build:
-    name: Build
+    name: Build permanently signed APKs
     runs-on: ubuntu-latest
+    environment: release-signing
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: 1.26.5
-          cache-dependency-path: "library/core/go.sum"
+          cache-dependency-path: library/core/go.sum
+
       - name: Setup Go Mobile
-        # https://github.com/golang/mobile/blob/c31d5b91ecc32c0d598b8fe8457d244ca0b4e815/cmd/gomobile/init.go#L83
         run: |
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260803200217-62cee1672c8e
           go install golang.org/x/mobile/cmd/gobind@v0.0.0-20260803200217-62cee1672c8e
+
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: 21
-          cache: 'gradle'
+          cache: gradle
+
       - name: Setup Android NDK
         id: setup-ndk
-        uses: nttld/setup-ndk@v1
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
         with:
           ndk-version: r29
+
       - name: Native Build
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: |
-          ./run lib core
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        run: ./run lib core
+
+      - name: Upload native core
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
+          name: LibExclaveCore
           path: app/libs/libexclavecore.aar
-          name: "LibExclaveCore"
-      - name: Gradle Cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.gradle
-          key: gradle-${{ hashFiles('**/*.gradle.kts') }}
+          retention-days: 30
+
+      - name: Restore permanent release key
+        env:
+          INCLAVE_KEYSTORE_P12_BASE64: ${{ secrets.INCLAVE_KEYSTORE_P12_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$INCLAVE_KEYSTORE_P12_BASE64"
+          umask 077
+          mkdir -p "$RUNNER_TEMP/inclave-signing"
+          printf '%s' "$INCLAVE_KEYSTORE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/inclave-signing/inclave-release.p12"
+          test -s "$RUNNER_TEMP/inclave-signing/inclave-release.p12"
+
+      - name: Verify signing key identity
+        env:
+          INCLAVE_KEYSTORE_PATH: ${{ runner.temp }}/inclave-signing/inclave-release.p12
+          INCLAVE_KEYSTORE_PASSWORD: ${{ secrets.INCLAVE_KEYSTORE_PASSWORD }}
+          INCLAVE_KEY_ALIAS: inclave
+        run: |
+          set -euo pipefail
+          inclave_expected_cert=$(tr -d '[:space:]' < signing/inclave-release-certificate.sha256)
+          inclave_actual_cert=$(keytool -exportcert \
+            -alias "$INCLAVE_KEY_ALIAS" \
+            -keystore "$INCLAVE_KEYSTORE_PATH" \
+            -storetype PKCS12 \
+            -storepass:env INCLAVE_KEYSTORE_PASSWORD | sha256sum | awk '{print $1}')
+          test "$inclave_actual_cert" = "$inclave_expected_cert"
+
       - name: Gradle Build
+        env:
+          INCLAVE_KEYSTORE_PATH: ${{ runner.temp }}/inclave-signing/inclave-release.p12
+          INCLAVE_KEYSTORE_PASSWORD: ${{ secrets.INCLAVE_KEYSTORE_PASSWORD }}
+          INCLAVE_KEY_PASSWORD: ${{ secrets.INCLAVE_KEYSTORE_PASSWORD }}
+          INCLAVE_KEY_ALIAS: inclave
         run: |
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
-          ./gradlew :app:downloadAssets
-          ./gradlew :app:assembleOssRelease :app:assembleLegacyRelease
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+          ./gradlew --no-daemon :app:downloadAssets
+          ./gradlew --no-daemon -PrequireReleaseSigning=true :app:assembleOssRelease :app:assembleLegacyRelease
+
+      - name: Verify every APK signer
+        run: |
+          set -euo pipefail
+          inclave_apksigner="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          inclave_expected_cert=$(tr -d '[:space:]' < signing/inclave-release-certificate.sha256)
+          inclave_apk_count=0
+          while IFS= read -r -d '' inclave_apk; do
+            inclave_verify_output=$("$inclave_apksigner" verify --verbose --print-certs "$inclave_apk")
+            printf '%s\n' "$inclave_verify_output"
+            inclave_actual_cert=$(printf '%s\n' "$inclave_verify_output" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            test "$inclave_actual_cert" = "$inclave_expected_cert"
+            inclave_apk_count=$((inclave_apk_count + 1))
+          done < <(find app/build/outputs/apk/oss/release app/build/outputs/apk/legacy/release -name '*.apk' -type f -print0)
+          test "$inclave_apk_count" -eq 8
+
+      - name: Remove private signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/inclave-signing/inclave-release.p12"
+          rmdir "$RUNNER_TEMP/inclave-signing" 2>/dev/null || true
+
+      - name: Upload default APKs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: APKs
           path: app/build/outputs/apk/oss/release
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+          retention-days: 90
+
+      - name: Upload legacy APKs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: APKs-legacy
           path: app/build/outputs/apk/legacy/release
+          retention-days: 90
+
   publish:
     name: Publish Release
-    if: startsWith(github.ref, 'refs/tags/') || (github.event.inputs.release == 'y' && github.event.inputs.tag != '')
     runs-on: ubuntu-latest
     needs: build
-    env:
-      GH_TOKEN: ${{ github.token }}
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Download Artifacts
-        uses: actions/download-artifact@v8
+      - name: Checkout verification material
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download default APKs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: APKs
           path: artifacts/oss
-      - name: Download Artifacts
-        uses: actions/download-artifact@v8
+
+      - name: Download legacy APKs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: APKs-legacy
           path: artifacts/legacy
-      - name: Publish Pre-release
-        if: github.event.inputs.prerelease == 'y'
+
+      - name: Verify downloaded APKs
         run: |
-          mkdir apks
-          find artifacts -name "*.apk" -exec cp {} apks \;
-          gh release create ${{ github.event.inputs.tag || github.ref_name }} --notes="" --title=${{ github.event.inputs.tag || github.ref_name }} --prerelease ./apks/*
-      - name: Publish Release
-        if: github.event.inputs.prerelease != 'y'
+          set -euo pipefail
+          inclave_apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -1)
+          test -x "$inclave_apksigner"
+          inclave_expected_cert=$(tr -d '[:space:]' < signing/inclave-release-certificate.sha256)
+          inclave_apk_count=0
+          while IFS= read -r -d '' inclave_apk; do
+            inclave_verify_output=$("$inclave_apksigner" verify --verbose --print-certs "$inclave_apk")
+            inclave_actual_cert=$(printf '%s\n' "$inclave_verify_output" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            test "$inclave_actual_cert" = "$inclave_expected_cert"
+            inclave_apk_count=$((inclave_apk_count + 1))
+          done < <(find artifacts -name '*.apk' -type f -print0)
+          test "$inclave_apk_count" -eq 8
+
+      - name: Publish verified release
         run: |
+          set -euo pipefail
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
           mkdir apks
-          find artifacts -name "*.apk" -exec cp {} apks \;
-          gh release create ${{ github.event.inputs.tag || github.ref_name }} --notes="" --title=${{ github.event.inputs.tag || github.ref_name }} ./apks/*
+          find artifacts -name '*.apk' -type f -exec cp {} apks/ \;
+          (cd apks && sha256sum -- *.apk | sort -k2 > SHA256SUMS)
+          inclave_release_args=(--target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then
+            inclave_release_args+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" "${inclave_release_args[@]}" ./apks/*
