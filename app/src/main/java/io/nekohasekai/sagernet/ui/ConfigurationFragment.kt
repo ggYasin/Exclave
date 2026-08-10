@@ -81,6 +81,17 @@ import io.nekohasekai.sagernet.fmt.internal.BalancerBean
 import io.nekohasekai.sagernet.fmt.internal.ChainBean
 import io.nekohasekai.sagernet.utils.FormatFileSizeCompat
 
+@android.annotation.SuppressLint("ClickableViewAccessibility")
+fun View.suppressDragWhilePressed(setPressed: (Boolean) -> Unit) {
+    setOnTouchListener { _, event ->
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> setPressed(true)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> setPressed(false)
+        }
+        false
+    }
+}
+
 class ConfigurationFragment @JvmOverloads constructor(
     val select: Boolean = false, val selectedItem: ProxyEntity? = null, val titleRes: Int = 0
 ) : ToolbarFragment(R.layout.layout_group_list),
@@ -394,7 +405,7 @@ class ConfigurationFragment @JvmOverloads constructor(
             ).show()
 
             val group = SagerDatabase.groupDao.getById(targetId)!!
-            GroupManager.updateGroup(group)
+            GroupManager.updateGroup(group, reconfigureUpdater = false)
         }
 
     }
@@ -497,9 +508,6 @@ class ConfigurationFragment @JvmOverloads constructor(
             R.id.action_new_wg -> {
                 startActivity(Intent(requireActivity(), WireGuardSettingsActivity::class.java))
             }
-            R.id.action_new_shadowtls -> {
-                startActivity(Intent(requireActivity(), ShadowTLSSettingsActivity::class.java))
-            }
             R.id.action_new_juicity -> {
                 startActivity(Intent(requireActivity(), JuicitySettingsActivity::class.java))
             }
@@ -514,6 +522,9 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
             R.id.action_new_trusttunnel -> {
                 startActivity(Intent(requireActivity(), TrustTunnelSettingsActivity::class.java))
+            }
+            R.id.action_new_snell -> {
+                startActivity(Intent(requireActivity(), SnellSettingsActivity::class.java))
             }
             R.id.action_new_config -> {
                 startActivity(Intent(requireActivity(), ConfigSettingsActivity::class.java))
@@ -1117,6 +1128,8 @@ class ConfigurationFragment @JvmOverloads constructor(
                     ?: return false).state.let { it.canStop || it == BaseService.State.Stopped }
             }
 
+        private var actionButtonPressed = false
+
         private fun isProfileEditable(id: Long): Boolean {
             return ((activity as? MainActivity)
                 ?: return false).state == BaseService.State.Stopped || id != DataStore.selectedProxy
@@ -1139,11 +1152,6 @@ class ConfigurationFragment @JvmOverloads constructor(
                 onViewCreated(requireView(), null)
             }
             checkOrderMenu()
-
-            if (!DataStore.experimentalFlagsProperties.getBooleanProperty("shadowquic")) {
-                (parentFragment as? ToolbarFragment)
-                    ?.toolbar?.menu?.findItem(R.id.action_new_shadowquic)?.isVisible  = false
-            }
 
             if (showBackup) {
                 (parentFragment as? ToolbarFragment)
@@ -1179,7 +1187,7 @@ class ConfigurationFragment @JvmOverloads constructor(
                 if (proxyGroup.order == order) return
                 runOnDefaultDispatcher {
                     proxyGroup.order = order
-                    GroupManager.updateGroup(proxyGroup)
+                    GroupManager.updateGroup(proxyGroup, reconfigureUpdater = false)
                 }
             }
 
@@ -1243,7 +1251,9 @@ class ConfigurationFragment @JvmOverloads constructor(
                     override fun getDragDirs(
                         recyclerView: RecyclerView,
                         viewHolder: RecyclerView.ViewHolder,
-                    ) = if (isEnabled) super.getDragDirs(recyclerView, viewHolder) else 0
+                    ) = if (isEnabled && !actionButtonPressed) super.getDragDirs(
+                        recyclerView, viewHolder
+                    ) else 0
 
                     override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                     }
@@ -1334,6 +1344,37 @@ class ConfigurationFragment @JvmOverloads constructor(
 
             override fun getItemCount(): Int {
                 return configurationIdList.size
+            }
+            var activeSelectionId: Long = -1
+
+            fun refreshSelection() {
+                val newId = DataStore.selectedProxy
+                if (activeSelectionId == newId) return
+                val oldId = activeSelectionId
+                activeSelectionId = newId
+
+                listOf(oldId, newId).forEach { id ->
+                    val index = configurationIdList.indexOf(id)
+                    if (index != -1) notifyItemChanged(index, "PAYLOAD_SELECTION_CHANGE")
+                }
+            }
+
+            override fun onBindViewHolder(
+                holder: ConfigurationHolder,
+                position: Int,
+                payloads: MutableList<Any>
+            ) {
+                if (payloads.contains("PAYLOAD_SELECTION_CHANGE")) {
+                    val entityId = configurationIdList[position]
+
+                    val isSelected = (entityId == activeSelectionId)
+                    val isStarted = isSelected && SagerNet.started && DataStore.startedProfile == entityId
+
+                    holder.selectedView.visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
+                    holder.deleteButton.isEnabled = !isStarted
+                } else {
+                    super.onBindViewHolder(holder, position, payloads)
+                }
             }
 
             private val updated = HashSet<ProxyEntity>()
@@ -1486,6 +1527,7 @@ class ConfigurationFragment @JvmOverloads constructor(
                     return
                 }
 
+                activeSelectionId = selectedItem?.id ?: DataStore.selectedProxy
 
                 var newProfiles = if (proxyGroup.id == Long.MAX_VALUE) {
                     SagerDatabase.proxyDao.getAll()
@@ -1520,10 +1562,10 @@ class ConfigurationFragment @JvmOverloads constructor(
                     notifyDataSetChanged()
 
                     if (selectedProfileIndex != -1 && !scrolled) {
-                        configurationListView.scrollTo(selectedProfileIndex, true)
+                        layoutManager.scrollToPositionWithOffset(selectedProfileIndex, 0)
                         scrolled = true
                     } else if (newProfiles.isNotEmpty() && !scrolled) {
-                        configurationListView.scrollTo(0, true)
+                        layoutManager.scrollToPositionWithOffset(0, 0)
                         scrolled = true
                     }
 
@@ -1568,18 +1610,16 @@ class ConfigurationFragment @JvmOverloads constructor(
                     view.setOnClickListener {
                         runOnDefaultDispatcher {
                             var update: Boolean
-                            var lastSelected: Long
                             profileAccess.withLock {
                                 update = DataStore.selectedProxy != proxyEntity.id
-                                lastSelected = DataStore.selectedProxy
                                 DataStore.selectedProxy = proxyEntity.id
-                                onMainDispatcher {
-                                    selectedView.visibility = View.VISIBLE
-                                }
                             }
 
                             if (update) {
-                                ProfileManager.postUpdate(lastSelected)
+                                onMainDispatcher {
+                                    adapter.refreshSelection()
+                                }
+
                                 if (pa.state.canStop && reloadAccess.tryLock()) {
                                     SagerNet.reloadService()
                                     reloadAccess.unlock()
@@ -1660,16 +1700,23 @@ class ConfigurationFragment @JvmOverloads constructor(
                     }
                 }
 
-                deleteButton.setOnClickListener {
-                    adapter.let {
-                        val index = it.configurationIdList.indexOf(proxyEntity.id)
-                        if (index >= 0) {
-                            it.remove(index)
-                            it.pendingDeletedIds.add(proxyEntity.id)
-                            undoManager.remove(index to proxyEntity)
+                deleteButton.setOnClickListener { view ->
+                    view.post {
+                        adapter.let {
+                            val index = it.configurationIdList.indexOf(proxyEntity.id)
+                            if (index >= 0) {
+                                it.remove(index)
+                                it.pendingDeletedIds.add(proxyEntity.id)
+                                undoManager.remove(index to proxyEntity)
+                            }
                         }
                     }
                 }
+
+                // suppress ItemTouchHelper drag while a row button is held, to avoid conflict with parent item's long-press
+                deleteButton.suppressDragWhilePressed { actionButtonPressed = it }
+                editButton.suppressDragWhilePressed { actionButtonPressed = it }
+                shareLayout.suppressDragWhilePressed { actionButtonPressed = it }
 
                 editButton.isGone = parent.select
                 deleteButton.isGone = parent.select
@@ -1858,5 +1905,4 @@ class ConfigurationFragment @JvmOverloads constructor(
             }
         }
     }
-
 }

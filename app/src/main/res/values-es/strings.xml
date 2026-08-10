@@ -69,7 +69,7 @@
     <string name="group_name">Nombre del grupo</string>
     <string name="group_create">Crear grupo</string>
     <string name="group_edit">Editar grupo</string>
-    <string name="raw">Crudo</string>
+    <string name="raw">Sin formato</string>
     <string name="deduplication_sum">Elimina configuraciones duplicadas al actualizar</string>
     <string name="clipboard_empty">El portapapeles está vacío</string>
     <string name="connect">Conectar</string>
@@ -80,8 +80,6 @@
     <string name="require_http">Activar HTTP de entrada</string>
     <string name="general_settings">Ajustes de la aplicación</string>
     <string name="hysteria_obfs">Contraseña de ofuscación</string>
-    <string name="route_reverse_redirect">Dirección de proxy inverso</string>
-    <string name="route_reverse">Proxy inverso</string>
     <string name="route_bypass_ip">Regla de IP para %s</string>
     <string name="route_block">Bloquear</string>
     <string name="hysteria_download_mbps">Velocidad máxima de descarga (Mbps)</string>
@@ -247,7 +245,7 @@
     <string name="wireguard_local_address">Dirección local</string>
     <string name="wireguard_public_key">Clave pública del par</string>
     <string name="wireguard_psk">Clave precompartida del par</string>
-    <string name="copy_success">¡Copiado exitosamente!</string>
+    <string name="copy_success">¡Copiado correcto!</string>
     <string name="traffic_holder">Activa la VPN para registrar estadísticas de tráfico</string>
     <plurals name="udp_connections">
         <item quantity="one">%d conexión UDP</item>
@@ -568,7 +566,6 @@
     <string name="insecure_warn_sum">Muestra advertencias para perfiles con seguridad equivalente al texto sin cifrar.</string>
     <string name="ech">ECH</string>
     <string name="mieru_traffic_pattern">Patrón de tráfico</string>
-    <string name="server_name_to_verify">ServerNameToVerify</string>
     <string name="require_socks">Activar SOCKS5 de entrada</string>
     <string name="insecure_warning_detail">La seguridad de este perfil es equivalente a la del texto sin cifrar.\n\nEsta advertencia se muestra porque la opción \"Advertencias de seguridad\" está activada.</string>
     <string name="hysteria_hop_interval_min">Intervalo mínimo de salto de puerto (s)</string>
@@ -584,4 +581,11 @@
     <string name="custom_outbound">Salida personalizada</string>
     <string name="hysteria2_gecko_max_packet_size">Tamaño máximo de paquete</string>
     <string name="hysteria2_gecko_min_packet_size">Tamaño mínimo de paquete</string>
+    <string name="nearby_devices_permission_notice">Para funcionar, se requiere el permiso \"dispositivos cercanos\", pero no se ha concedido.</string>
+    <string name="snell_reuse">Reutilizar conexión</string>
+    <string name="pre_shared_key">Clave pre-compartida</string>
+    <string name="snell_obfs_mode">Modo de ofuscación</string>
+    <string name="snell_obfs_host">Host de ofuscación</string>
+    <string name="snell_mode">Modo</string>
+    <string name="anytls_disable_reuse">Deshabilitar la reutilización de la conexión</string>
 </resources>

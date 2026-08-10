@@ -227,7 +227,6 @@ object Key {
     const val SERVER_DISABLE_SNI = "serverDisableSNI"
     const val SERVER_REDUCE_RTT= "serverReduceRTT"
 
-    const val SERVER_SHADOWTLS_PROTOCOL_VERSION = "serverShadowTLSProtocolVersion"
     const val SERVER_MIERU_MUX_LEVEL = "serverMieruMuxLevel"
     const val SERVER_MIERU_HANDSHAKE_MODE = "serverMieruHandshakeMode"
     const val SERVER_MIERU_TRAFFIC_PATTERN = "serverMieruTrafficPattern"
@@ -236,7 +235,8 @@ object Key {
     const val SERVER_ANYTLS_IDLE_SESSION_CHECK_INTERVAL = "serverAnyTLSIdleSessionCheckInterval"
     const val SERVER_ANYTLS_IDLE_SESSION_TIMEOUT = "serverAnyTLSIdleSessionTimeout"
     const val SERVER_ANYTLS_MIN_IDLE_SESSION = "serverAnyTLSMinIdleSession"
-    const val SERVER_TRUSTTUNNEL_SERVER_NAME_TO_VERIFY = "serverTrustTunnelServerNameToVerify"
+    const val SERVER_ANYTLS_DISABLE_REUSE = "serverAnyTLSDisableReuse"
+    const val SERVER_SERVER_NAME_TO_VERIFY = "serverServerNameToVerify"
     const val SERVER_HYSTERIA2_OMIT_MAX_DATAGRAM_FRAME_SIZE = "serverHysteria2OmitMaxDatagramFrameSize"
     const val SERVER_SSH_KEEPALIVE_INTERVAL = "serverSSHKeepaliveInterval"
 
@@ -248,10 +248,18 @@ object Key {
     const val SERVER_HYSTERIA2_OBFS_TYPE = "serverHysteria2ObfsType"
     const val SERVER_HYSTERIA2_GECKO_MIN_PACKET_SIZE = "serverHysteria2GeckoMinPacketSize"
     const val SERVER_HYSTERIA2_GECKO_MAX_PACKET_SIZE = "serverHysteria2GeckoMaxPacketSize"
+    const val SERVER_HYSTERIA2_CHROME_PARROT = "serverHysteria2ChromeParrot"
+
+    const val SERVER_SNELL_VERSION = "serverSnellVersion"
+    const val SERVER_SNELL_REUSE = "serverSnellReuse"
+    const val SERVER_SNELL_PSK = "serverSnellPSK"
+    const val SERVER_SNELL_USER_KEY = "serverSnellUserKey"
+
+    const val SERVER_SNELL_OBFS_MODE = "serverSnellObfsMode"
+    const val SERVER_SNELL_OBFS_HOST = "serverSnellObfsHost"
+    const val SERVER_SNELL_MODE = "serverSnellMode"
 
     const val SERVER_NAIVE_NO_POST_QUANTUM = "serverNaiveNoPostQuantum"
-    const val SERVER_SHADOWQUIC_DISABLE_ALPN = "serverShadowQUICDisableALPN"
-    const val SERVER_SHADOWQUIC_USE_SUNNYQUIC = "serverShadowQUICUseSunnyQUIC"
 
     const val SERVER_SING_UOT_CATEGORY = "serverSingUotCategory"
     const val SERVER_SING_MUX_CATEGORY = "serverSingMuxCategory"
@@ -262,7 +270,7 @@ object Key {
     const val SERVER_SING_MUX_MIN_STREAMS = "serverSingMuxMinStreams"
     const val SERVER_SING_MUX_MAX_STREAMS = "serverSingMuxMaxStreams"
     const val SERVER_SING_MUX_PADDING = "serverSingMuxPadding"
-
+    const val SERVER_SING_SNELL_CATEGORY = "serverSingSnellCategory"
     const val EXPERIMENTAL_FLAGS = "experimentalFlags"
 
     const val BALANCER_TYPE = "balancerType"
@@ -284,8 +292,6 @@ object Key {
     const val ROUTE_ATTRS = "routeAttrs"
     const val ROUTE_OUTBOUND = "routeOutbound"
     const val ROUTE_OUTBOUND_RULE = "routeOutboundRule"
-    const val ROUTE_REVERSE = "routeReverse"
-    const val ROUTE_REDIRECT = "routeRedirect"
     const val ROUTE_PACKAGES = "routePackages"
     const val ROUTE_CUSTOM_PACKAGE_NAME_OR_UID = "routeCustomPackageNameOrUid"
     const val ROUTE_NETWORK_TYPE = "routeNetworkType"

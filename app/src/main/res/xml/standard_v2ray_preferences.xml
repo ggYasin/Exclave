@@ -113,6 +113,11 @@
             app:key="serverDownloadSpeed"
             app:title="@string/hysteria_download_mbps"
             app:useSimpleSummaryProvider="true" />
+        <SwitchPreference
+            app:icon="@drawable/ic_baseline_fingerprint_24"
+            app:key="serverHysteria2ChromeParrot"
+            app:summary="@string/chrome_parrot_summary"
+            app:title="@string/chrome_parrot" />
         <EditTextPreference
             app:dialogLayout="@layout/layout_password_dialog"
             app:icon="@drawable/ic_settings_password"
@@ -238,6 +243,12 @@
             app:icon="@drawable/ic_baseline_security_24"
             app:key="serverEchConfig"
             app:title="@string/ech_config"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:dialogMessage="@string/one_per_line"
+            app:icon="@drawable/ic_action_copyright"
+            app:key="serverServerNameToVerify"
+            app:title="@string/server_name_to_verify"
             app:useSimpleSummaryProvider="true" />
         <SwitchPreference
             app:icon="@drawable/baseline_construction_24"

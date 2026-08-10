@@ -26,6 +26,9 @@ import io.nekohasekai.sagernet.fmt.trojan.TrojanBean
 import io.nekohasekai.sagernet.ktx.*
 import libexclavecore.Libexclavecore
 import java.util.Base64
+import kotlin.collections.filter
+import kotlin.collections.isNotEmpty
+import kotlin.text.isNotEmpty
 
 val supportedVmessMethod = arrayOf(
     "auto", "aes-128-gcm", "chacha20-poly1305", "none", "zero"
@@ -70,7 +73,7 @@ fun parseV2Ray(link: String): StandardV2RayBean {
         else -> error("impossible")
     }
 
-    if (url.scheme == "vmess" && url.port == 0 && url.username.isEmpty() && url.password.isEmpty()) {
+    if (url.scheme == "vmess" && !url.hasPort() && url.userInfo.isEmpty()) {
         val decoded = link.substring("vmess://".length).substringBefore("#").decodeBase64()
         try {
             return parseV2RayN(parseJson(decoded).asJsonObject)
@@ -91,36 +94,24 @@ fun parseV2Ray(link: String): StandardV2RayBean {
         error("unknown format")
     }
 
-    if (url.scheme == "vmess" && url.password.isNotEmpty()) {
+    if (url.scheme == "vmess" && url.hasPassword()) {
         // https://github.com/v2fly/v2fly-github-io/issues/26
         error("known unsupported format")
     }
 
-    bean.serverAddress = url.host.ifEmpty { error("empty host") }
-    bean.serverPort = url.port
+    bean.serverAddress = url.host
+    bean.serverPort = when {
+        !url.hasPort() -> error("invalid port")
+        else -> url.port
+    }
     bean.name = url.fragment
 
     if (bean is TrojanBean) {
         // https://github.com/trojan-gfw/igniter/issues/318
-        when {
-            url.username.isEmpty() && url.password.isEmpty() -> {
-                if (link.substring("trojan://".length).substringBefore("@") == ":") {
-                    bean.password = ":"
-                }
-            }
-            url.username.isNotEmpty() && url.password.isEmpty() -> {
-                bean.password = if (link.substring("trojan://".length).substringBefore("@").endsWith(":")) {
-                    url.username + ":"
-                } else {
-                    url.username
-                }
-            }
-            url.username.isEmpty() && url.password.isNotEmpty() -> {
-                bean.password = ":" + url.password
-            }
-            url.username.isNotEmpty() && url.password.isNotEmpty() -> {
-                bean.password = url.username + ":" + url.password
-            }
+        if (url.hasPassword()) {
+            bean.password = url.username + ":" + url.password
+        } else {
+            bean.password = url.username
         }
     } else {
         bean.uuid = uuidOrGenerate(url.username)
@@ -161,7 +152,7 @@ fun parseV2Ray(link: String): StandardV2RayBean {
     when (bean.security) {
         "none" -> {
             if (bean is VLESSBean) {
-                url.queryParameterNotBlank("flow")?.let {
+                url.queryParameter("flow")?.let {
                     when (it) {
                         in supportedVlessFlow -> {
                             bean.flow = "xtls-rprx-vision-udp443"
@@ -174,18 +165,14 @@ fun parseV2Ray(link: String): StandardV2RayBean {
             }
         }
         "tls" -> {
-            if (bean is TrojanBean) {
-                bean.sni = url.queryParameterNotBlank("sni") ?: url.queryParameter("peer")
-            } else {
-                url.queryParameterNotBlank("sni")?.let {
-                    bean.sni = it
-                }
+            url.queryParameter("sni")?.let {
+                bean.sni = it
             }
-            url.queryParameterNotBlank("alpn")?.let {
+            url.queryParameter("alpn")?.let {
                 bean.alpn = it.split(",").joinToString("\n")
             }
             if (bean is VLESSBean) {
-                url.queryParameterNotBlank("flow")?.let {
+                url.queryParameter("flow")?.let {
                     when (it) {
                         in supportedVlessFlow -> {
                             bean.flow = "xtls-rprx-vision-udp443"
@@ -212,41 +199,43 @@ fun parseV2Ray(link: String): StandardV2RayBean {
                     bean.allowInsecure = true // non-standard
                 }
             }
-            url.queryParameterNotBlank("pcs")?.takeIf { it.isNotEmpty() }?.let { pcs ->
+            url.queryParameter("pcs")?.takeIf { it.isNotEmpty() }?.let { pcs ->
                 bean.pinnedPeerCertificateSha256 =
-                    pcs.split(if (pcs.contains("~")) "~" else ",")
+                    pcs.split(",")
                         .mapNotNull { it.trim().ifEmpty { null }?.replace(":", "") }
                         .joinToString("\n")
                 if (!bean.pinnedPeerCertificateSha256.isNullOrEmpty()) {
                     bean.allowInsecure = true
                 }
             }
-            if (url.scheme == "vless" || url.scheme == "trojan") {
-                // Only parse ECH for shit VLESS or Trojan free nodes
-                url.queryParameter("ech")?.let {
-                    bean.echEnabled = true
-                    try {
-                        Base64.getDecoder().decode(it)
-                        bean.echConfig = it
-                    } catch (_: Exception) {}
-                }
+            url.queryParameter("vcn")?.takeIf { it.isNotEmpty() }?.let { vcn ->
+                bean.serverNameToVerify = vcn.split(",")
+                    .filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }
+                    ?.joinToString("\n")
+            }
+            url.queryParameter("ech")?.let {
+                bean.echEnabled = true
+                try {
+                    Base64.getDecoder().decode(it)
+                    bean.echConfig = it
+                } catch (_: Exception) {}
             }
         }
         "reality" -> {
-            url.queryParameterNotBlank("sni")?.let {
+            url.queryParameter("sni")?.let {
                 bean.sni = it
             }
-            url.queryParameterNotBlank("pbk")?.ifEmpty { error("empty reality public key") }?.let {
+            url.queryParameter("pbk")?.ifEmpty { error("empty reality public key") }?.let {
                 bean.realityPublicKey = it
             }
-            url.queryParameterNotBlank("sid")?.let {
+            url.queryParameter("sid")?.let {
                 bean.realityShortId = it
             }
-            url.queryParameterNotBlank("pqv")?.let {
+            url.queryParameter("pqv")?.let {
                 bean.realityMldsa65Verify = it
             }
             if (bean is VLESSBean) {
-                url.queryParameterNotBlank("flow")?.let {
+                url.queryParameter("flow")?.let {
                     when (it) {
                         in supportedVlessFlow -> {
                             bean.flow = "xtls-rprx-vision-udp443"
@@ -262,14 +251,15 @@ fun parseV2Ray(link: String): StandardV2RayBean {
 
     bean.type = url.queryParameter("type")
     when (bean.type) {
-        "tcp", null -> {
+        "tcp", "raw", null -> {
+            bean.type = "tcp"
             url.queryParameter("headerType")?.let { headerType ->
                 // invented by v2rayN(G)
                 when (headerType) {
                     "none" -> {}
                     "http" -> {
                         bean.headerType = headerType
-                        url.queryParameterNotBlank("host")?.let {
+                        url.queryParameter("host")?.let {
                             bean.host = it.split(",").joinToString("\n")
                         }
                     }
@@ -287,19 +277,19 @@ fun parseV2Ray(link: String): StandardV2RayBean {
             }
         }
         "http" -> {
-            url.queryParameterNotBlank("host")?.let {
+            url.queryParameter("host")?.let {
                 // The proposal says "省略时复用 remote-host", but this is not correct except for the breaking change below.
                 // will not follow the breaking change in https://github.com/XTLS/Xray-core/commit/0a252ac15d34e7c23a1d3807a89bfca51cbb559b
                 // "若有多个域名，可使用英文逗号隔开，但中间及前后不可有空格。"
                 bean.host = it.split(",").joinToString("\n")
             }
-            url.queryParameterNotBlank("path")?.let {
+            url.queryParameter("path")?.let {
                 bean.path = it
             }
         }
         "xhttp", "splithttp" -> {
             bean.type = "splithttp"
-            url.queryParameterNotBlank("extra")?.let { extra ->
+            url.queryParameter("extra")?.let { extra ->
                 try {
                     val json = parseJson(extra).asJsonObject
                     if (!json.isEmpty) {
@@ -308,13 +298,13 @@ fun parseV2Ray(link: String): StandardV2RayBean {
                     }
                 } catch (_: Exception) {}
             }
-            url.queryParameterNotBlank("host")?.let {
+            url.queryParameter("host")?.let {
                 bean.host = it
             }
-            url.queryParameterNotBlank("path")?.let {
+            url.queryParameter("path")?.let {
                 bean.path = it
             }
-            url.queryParameterNotBlank("mode")?.let {
+            url.queryParameter("mode")?.let {
                 bean.splithttpMode = when (it) {
                     in supportedXhttpMode -> it
                     "" -> "auto"
@@ -326,12 +316,12 @@ fun parseV2Ray(link: String): StandardV2RayBean {
             // Fuck Xray httpupgrade ALPN
             // https://github.com/XTLS/Xray-core/blob/1bdb488c9ec09ea51e6899697d5b7437f3cf6eb2/transport/internet/tls/tls.go#L94-L131
             bean.alpn = null
-            url.queryParameterNotBlank("host")?.let {
+            url.queryParameter("host")?.let {
                 // will not follow the breaking change in
                 // https://github.com/XTLS/Xray-core/commit/a2b773135a860f63e990874c551b099dfc888471
                 bean.host = it
             }
-            url.queryParameterNotBlank("path")?.let { path ->
+            url.queryParameter("path")?.let { path ->
                 bean.path = path
                 try {
                     // RPRX's smart-assed invention. This of course will break under some conditions.
@@ -353,12 +343,12 @@ fun parseV2Ray(link: String): StandardV2RayBean {
             // Fuck Xray ws ALPN
             // https://github.com/XTLS/Xray-core/blob/1bdb488c9ec09ea51e6899697d5b7437f3cf6eb2/transport/internet/tls/tls.go#L94-L131
             bean.alpn = null
-            url.queryParameterNotBlank("host")?.let {
+            url.queryParameter("host")?.let {
                 // will not follow the breaking change in
                 // https://github.com/XTLS/Xray-core/commit/a2b773135a860f63e990874c551b099dfc888471
                 bean.host = it
             }
-            url.queryParameterNotBlank("path")?.let { path ->
+            url.queryParameter("path")?.let { path ->
                 bean.path = path
                 try {
                     // RPRX's smart-assed invention. This of course will break under some conditions.
@@ -383,22 +373,22 @@ fun parseV2Ray(link: String): StandardV2RayBean {
                 if (it !in supportedKcpQuicHeaderType) error("unsupported headerType")
                 bean.headerType = it
             }
-            url.queryParameterNotBlank("quicSecurity")?.let { quicSecurity ->
+            url.queryParameter("quicSecurity")?.let { quicSecurity ->
                 if (quicSecurity !in supportedQuicSecurity) error("unsupported quicSecurity")
                 bean.quicSecurity = quicSecurity
-                url.queryParameterNotBlank("key")?.let {
+                url.queryParameter("key")?.let {
                     bean.quicKey = it
                 }
             }
         }
         "grpc" -> {
-            url.queryParameterNotBlank("serviceName")?.let {
+            url.queryParameter("serviceName")?.let {
                 // Xray hijacks the share link standard, uses escaped `serviceName` and some other non-standard `serviceName`s and breaks the compatibility with other implementations.
                 // Fixing the compatibility with Xray will break the compatibility with V2Ray and others.
                 // So do not fix the compatibility with Xray.
                 bean.grpcServiceName = it
             }
-            url.queryParameterNotBlank("mode")?.takeIf { it == "multi" }?.let {
+            url.queryParameter("mode")?.takeIf { it == "multi" }?.let {
                 // Xray private
                 bean.grpcMultiMode = true
             }
@@ -432,7 +422,7 @@ fun parseV2Ray(link: String): StandardV2RayBean {
             val json = parseJson(finalmask).asJsonObject
             if (!json.isEmpty) {
                 when (bean.type) {
-                    "tcp", "ws", "grpc", "httpupgrade" -> {
+                    "tcp", "ws", "grpc", "httpupgrade", "http" -> {
                         // ban Xray TCP finalmask
                         json.getArray("tcp", ignoreCase = true)?.takeIf { it.isNotEmpty() }?.also {
                             error("unsupported")
@@ -441,6 +431,7 @@ fun parseV2Ray(link: String): StandardV2RayBean {
                     "kcp" -> {
                         json.getArray("udp", ignoreCase = true)?.takeIf { it.isNotEmpty() }?.also { udpMasks ->
                             if (udpMasks.size !in 1..2) error("unsupported")
+                            var isMkcpLegacy = false
                             when (udpMasks.last().getString("type", ignoreCase = true)) {
                                 "mkcp-original" -> {}
                                 "mkcp-aes128gcm" -> {
@@ -451,49 +442,73 @@ fun parseV2Ray(link: String): StandardV2RayBean {
                                         }
                                     }
                                 }
+                                "mkcp-legacy" -> {
+                                    isMkcpLegacy = true
+                                    udpMasks.last().getObject("settings", ignoreCase = true)?.also { settings ->
+                                        settings.getString("header", ignoreCase = true).orEmpty().lowercase().also {
+                                            when (it) {
+                                                "dtls", "srtp", "utp", "wireguard" -> bean.headerType = it
+                                                "wechat" -> bean.headerType = "wechat-video"
+                                                else -> error("unsupported")
+                                            }
+                                        }
+                                    }
+                                }
                                 else -> error("unsupported")
                             }
                             if (udpMasks.size == 2) {
-                                when (udpMasks.first().getString("type", ignoreCase = true)) {
+                                when (val type = udpMasks.first().getString("type", ignoreCase = true)) {
                                     null -> {}
-                                    "header-dtls" -> bean.headerType = "dtls"
-                                    "header-srtp" -> bean.headerType = "srtp"
-                                    "header-utp" -> bean.headerType = "utp"
-                                    "header-wechat" -> bean.headerType = "wechat-video"
-                                    "header-wireguard" -> bean.headerType = "wireguard"
+                                    "header-wechat" -> {
+                                        if (isMkcpLegacy) error("unsupported")
+                                        bean.headerType = "wechat-video"
+                                    }
+                                    "header-dtls", "header-srtp", "header-utp", "header-wireguard" -> {
+                                        if (isMkcpLegacy) error("unsupported")
+                                        bean.headerType = type.removePrefix("header-")
+                                    }
+                                    "mkcp-legacy" -> {
+                                        if (!isMkcpLegacy) error("unsupported")
+                                        udpMasks.first().getObject("settings", ignoreCase = true)?.also { settings ->
+                                            settings.getString("header", ignoreCase = true).orEmpty().also {
+                                                if (it.isNotEmpty()) error("unsupported")
+                                            }
+                                            settings.getString("value", ignoreCase = true).orEmpty().also {
+                                                bean.mKcpSeed = it
+                                            }
+                                        }
+                                    }
                                     else -> error("unsupported")
                                 }
                             }
                         }
                     }
                     "splithttp" -> {
-                        if (bean.alpn != "h3") {
-                            // ban Xray TCP finalmask
-                            json.getArray("tcp", ignoreCase = true)?.takeIf { it.isNotEmpty() }?.also {
-                                error("unsupported")
-                            }
-                        } else {
-                            // ban Xray UDP finalmask
-                            json.getArray("udp", ignoreCase = true)?.takeIf { it.isNotEmpty() }?.also {
-                                error("unsupported")
-                            }
-                            // ban Xray QUIC port hopping
-                            json.getObject("quicParams")?.also { quicParams ->
-                                quicParams.getObject("udphop")?.also { udphop ->
-                                    udphop.getInt("ports")?.also {
-                                        error("unsupported")
-                                    } ?: udphop.getString("ports")?.takeIf { it.isNotEmpty() }?.also {
-                                        it.split(",").joinToString(",") { it.trim() }
-                                            .takeIf { it.isValidHysteriaPort(disallowFromGreaterThanTo = true) }
-                                            ?.also { error("unsupported") }
-                                    }
-                                }
-                            }
+                        // leave it broken, I don't care
+                        // ban Xray TCP finalmask
+                        json.getArray("tcp", ignoreCase = true)?.takeIf { it.isNotEmpty() }?.also {
+                            error("unsupported")
+                        }
+                        // ban Xray UDP finalmask
+                        json.getArray("udp", ignoreCase = true)?.takeIf { it.isNotEmpty() }?.also {
+                            error("unsupported")
                         }
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            throw e
+        }
+    }
+
+    if (bean.security == "reality") {
+        when (bean.type) {
+            "tcp", "http", "grpc", "splithttp" -> {}
+            else -> error("reality does not support ${bean.type}")
+        }
+    }
+    if (bean is VLESSBean && bean.security != "none" && bean.flow == "xtls-rprx-vision-udp443" && bean.type != "tcp") {
+        error("vision does not support ${bean.type}")
     }
 
     return bean
@@ -502,7 +517,7 @@ fun parseV2Ray(link: String): StandardV2RayBean {
 private fun parseV2RayN(json: JsonObject): VMessBean {
     // https://github.com/2dust/v2rayN/wiki/Description-of-VMess-share-link
     val bean = VMessBean().apply {
-        serverAddress = json.getString("add")?.ifEmpty { error("empty host") } ?: error("missing server address")
+        serverAddress = json.getString("add") ?: error("missing server address")
         serverPort = (json.getString("port")?.toIntOrNull()
             ?: json.getInt("port"))?: error("invalid port")
         uuid = json.getString("id")?.let {
@@ -524,13 +539,13 @@ private fun parseV2RayN(json: JsonObject): VMessBean {
         else -> "tcp"
     }
     val type = json.getString("type")?.takeIf { it.isNotEmpty() }
-    val host = json.getString("host")?.takeIf { it.isNotBlank() }
-    val path = json.getString("path")?.takeIf { it.isNotBlank() }
+    val host = json.getString("host")?.takeIf { it.isNotEmpty() }
+    val path = json.getString("path")?.takeIf { it.isNotEmpty() }
 
     when (bean.type) {
         "tcp" -> {
             bean.host = host?.split(",")?.joinToString("\n") // "http(tcp)->host中间逗号(,)隔开"
-            bean.path = path?.split(",")?.joinToString("\n") // see v2rayN(G) source code
+            bean.path = path?.split(",")?.joinToString("\n") // See https://github.com/ExclaveNetwork/Exclave/issues/357
             type?.let {
                 if (it != "http" && it != "none") error("unsupported headerType")
                 bean.headerType = it
@@ -610,13 +625,27 @@ private fun parseV2RayN(json: JsonObject): VMessBean {
             bean.security = security
             bean.name = json.getString("ps")?.takeIf { it.isNotEmpty() }
             // See https://github.com/2dust/v2rayNG/blob/5db2df77a01144b8f3d40116f8c183153f181d05/V2rayNG/app/src/main/java/com/v2ray/ang/handler/V2rayConfigManager.kt#L1077-L1242
-            bean.sni = json.getString("sni")?.takeIf { it.isNotBlank() } ?: host?.split(",")?.get(0)
-            bean.alpn = json.getString("alpn")?.takeIf { it.isNotBlank() }?.split(",")?.joinToString("\n")
+            bean.sni = json.getString("sni")?.takeIf { it.isNotEmpty() } ?: host?.split(",")?.get(0)
+            bean.alpn = json.getString("alpn")?.takeIf { it.isNotEmpty() }?.split(",")?.joinToString("\n")
             json.getString("insecure")?.takeIf { it == "1" }?.let {
                 bean.allowInsecure = true
             }
             json.getInt("insecure")?.takeIf { it == 1 }?.let {
                 bean.allowInsecure = true
+            }
+            json.getString("pcs")?.takeIf { it.isNotEmpty() }?.let { pcs ->
+                bean.pinnedPeerCertificateSha256 =
+                    pcs.split(",")
+                        .mapNotNull { it.trim().ifEmpty { null }?.replace(":", "") }
+                        .joinToString("\n")
+                if (!bean.pinnedPeerCertificateSha256.isNullOrEmpty()) {
+                    bean.allowInsecure = true
+                }
+            }
+            json.getString("vcn")?.takeIf { it.isNotEmpty() }?.let { vcn ->
+                bean.serverNameToVerify = vcn.split(",")
+                    .filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }
+                    ?.joinToString("\n")
             }
         }
         "reality" -> {
@@ -658,7 +687,7 @@ fun StandardV2RayBean.toUri(): String? {
             else -> error("impossible")
         }
     ).apply {
-        setHostPort(serverAddress.ifEmpty { error("empty server address") }, serverPort)
+        setHostPort(serverAddress, serverPort)
         if (name.isNotEmpty()) {
             fragment = name
         }
@@ -673,6 +702,9 @@ fun StandardV2RayBean.toUri(): String? {
         is VMessBean -> {
             builder.username = uuidOrGenerate(uuid)
             builder.addQueryParameter("encryption", encryption)
+            if (alterId > 0) {
+                error("unsupported vmess alterId")
+            }
         }
         is VLESSBean -> {
             builder.username = uuidOrGenerate(uuid)
@@ -716,35 +748,51 @@ fun StandardV2RayBean.toUri(): String? {
                 if (host.isNotEmpty()) {
                     builder.addQueryParameter("host", host.listByLineOrComma().joinToString(","))
                 }
+                // See https://github.com/ExclaveNetwork/Exclave/issues/357
+                /*if (path.isNotEmpty()) {
+                    builder.addQueryParameter("path", path.listByLineOrComma().joinToString(","))
+                }*/
             }
         }
         "kcp" -> {
             if (headerType != "none") {
                 builder.addQueryParameter("headerType", headerType)
             }
-            if (mKcpSeed.isEmpty()) {
-                builder.addQueryParameter("fm", JsonObject().apply {
-                    // fuck rprx finalmask
-                    add("udp", JsonArray().apply {
-                        add(JsonObject().apply {
-                            addProperty("type", "mkcp-original")
-                        })
-                    })
-                }.toString())
-            } else {
+            if (mKcpSeed.isNotEmpty()) {
                 builder.addQueryParameter("seed", mKcpSeed)
-                builder.addQueryParameter("fm", JsonObject().apply {
-                    // fuck rprx finalmask
-                    add("udp", JsonArray().apply {
-                        add(JsonObject().apply {
-                            addProperty("type", "mkcp-aes128gcm")
-                            add("settings", JsonObject().apply {
-                                addProperty("password", mKcpSeed)
-                            })
-                        })
-                    })
-                }.toString())
             }
+            // fuck rprx finalmask
+            builder.addQueryParameter("fm", JsonObject().apply {
+                add("udp", JsonArray().apply {
+                    add(JsonObject().apply {
+                        addProperty("type", "mkcp-legacy")
+                        if (mKcpSeed.isNotEmpty()) {
+                            add("settings", JsonObject().apply {
+                                addProperty("value", mKcpSeed)
+                            })
+                        }
+                    })
+                    when (headerType) {
+                        "none" -> {}
+                        "srtp", "utp", "dtls", "wireguard" -> {
+                            add(JsonObject().apply {
+                                addProperty("type", "mkcp-legacy")
+                                add("settings", JsonObject().apply {
+                                    addProperty("header", headerType)
+                                })
+                            })
+                        }
+                        "wechat-video" -> {
+                            add(JsonObject().apply {
+                                addProperty("type", "mkcp-legacy")
+                                add("settings", JsonObject().apply {
+                                    addProperty("header", "wechat")
+                                })
+                            })
+                        }
+                    }
+                })
+            }.toString())
         }
         "ws" -> {
             if (host.isNotEmpty()) {
@@ -868,12 +916,18 @@ fun StandardV2RayBean.toUri(): String? {
             }
             // as pinned certificate is not exportable, only add `allowInsecure=1` if pinned certificate is not used
             if (allowInsecure && pinnedPeerCertificateSha256.isEmpty() &&
-                pinnedPeerCertificatePublicKeySha256.isEmpty() && pinnedPeerCertificateChainSha256.isEmpty()) {
+                pinnedPeerCertificatePublicKeySha256.isEmpty() && pinnedPeerCertificateChainSha256.isEmpty() &&
+                serverNameToVerify.listByLineOrComma().isEmpty()) {
                 // bad format from where?
                 builder.addQueryParameter("allowInsecure", "1")
             }
             if (pinnedPeerCertificateSha256.isNotEmpty()) {
-                builder.addQueryParameter("pcs", pinnedPeerCertificateSha256.listByLineOrComma().joinToString("~"))
+                builder.addQueryParameter("pcs", pinnedPeerCertificateSha256.listByLineOrComma().joinToString(":"))
+            }
+            if (serverNameToVerify.isNotEmpty()) {
+                val serverNames = serverNameToVerify.listByLineOrComma()
+                if (serverNames.contains("")) error("serverNameToVerify contains empty value")
+                builder.addQueryParameter("vcn", serverNames.joinToString(","))
             }
             if (this is VLESSBean && flow.isNotEmpty()) {
                 builder.addQueryParameter("flow", flow.removeSuffix("-udp443"))
@@ -890,11 +944,21 @@ fun StandardV2RayBean.toUri(): String? {
             if (realityMldsa65Verify.isNotEmpty()) {
                 builder.addQueryParameter("pqv", realityMldsa65Verify)
             }
-            builder.addQueryParameter("fp", "chrome") // "若使用 REALITY，此项不可省略。"
+            builder.addQueryParameter("fp", "chrome") // "chrome" is only a placeholder because "若使用 REALITY，此项不可省略。".
             if (this is VLESSBean && flow.isNotEmpty()) {
                 builder.addQueryParameter("flow", flow.removeSuffix("-udp443"))
             }
         }
+    }
+
+    if (security == "reality") {
+        when (type) {
+            "tcp", "http", "grpc", "splithttp" -> {}
+            else -> error("reality does not support ${type}")
+        }
+    }
+    if (this is VLESSBean && security != "none" && flow.isNotEmpty() && type != "tcp") {
+        error("vision does not support ${type}")
     }
 
     return builder.string

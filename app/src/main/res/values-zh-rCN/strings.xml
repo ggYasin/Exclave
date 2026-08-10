@@ -203,8 +203,6 @@
     <string name="port_transproxy">透明代理端口</string>
     <string name="connection_test_url">连接测试 URL</string>
     <string name="connection_test_available_http">连接成功：HTTP 握手耗时 %d 毫秒</string>
-    <string name="route_reverse">反向代理</string>
-    <string name="route_reverse_redirect">反向代理地址</string>
     <string name="certificates">证书（链）</string>
     <string name="pinned_peer_certificate_chain_sha256">固定证书链 SHA-256</string>
     <string name="ignore_battery_optimizations">忽略电池优化</string>
@@ -564,7 +562,6 @@
     <string name="insecure_warn">安全建议</string>
     <string name="insecure_warn_sum">对安全性相当于明文的配置显示警告。</string>
     <string name="ech">ECH</string>
-    <string name="server_name_to_verify">ServerNameToVerify</string>
     <string name="mieru_traffic_pattern">流量模式</string>
     <string name="insecure_warning_detail">此配置的安全性相当于明文。\n\n该警告被显示是因为“安全建议”被启用。</string>
     <string name="hysteria_hop_interval_min">最小端口跳跃间隔（秒）</string>
@@ -582,4 +579,14 @@
     <string name="custom_outbound">自定义出站</string>
     <string name="hysteria2_gecko_max_packet_size">最大包大小</string>
     <string name="hysteria2_gecko_min_packet_size">最小包大小</string>
+    <string name="nearby_devices_permission_notice">这需要“附近的设备”权限以工作，但是权限未被授予。</string>
+    <string name="snell_reuse">连接复用</string>
+    <string name="pre_shared_key">预共享密钥</string>
+    <string name="snell_obfs_mode">混淆模式</string>
+    <string name="snell_obfs_host">混淆主机</string>
+    <string name="snell_mode">模式</string>
+    <string name="anytls_disable_reuse">禁用连接复用</string>
+    <string name="chrome_parrot_summary">模仿 Chrome 的 QUIC Client Hello</string>
+    <string name="chrome_parrot_omit_max_datagram_frame_size_datagram_warning">此选项被禁用以匹配 Chrome 的行为。 </string>
+    <string name="option_globally_enabled">此选项已被全局启用，该值将被忽略。</string>
 </resources>

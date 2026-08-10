@@ -26,20 +26,17 @@ fun parseAnyTLS(url: String): AnyTLSBean {
     val link = Libexclavecore.parseURL(url)
     return AnyTLSBean().apply {
         name = link.fragment
-        serverAddress = link.host.ifEmpty { error("empty host") }
-        serverPort = link.port.takeIf { it > 0 } ?: 443
+        serverAddress = link.host
+        serverPort = when {
+            !link.hasPort() -> 443
+            else -> link.port
+        }
         password = link.username
         security = "tls"
-        link.queryParameterNotBlank("sni")?.also {
+        link.queryParameter("sni")?.also {
             sni = it
         }
-        link.queryParameter("insecure")?.takeIf { it == "1" || it == "true" }?.also {
-            allowInsecure = true
-        }
-        link.queryParameter("allow_insecure")?.takeIf { it == "1" || it == "true" }?.also {
-            allowInsecure = true
-        }
-        link.queryParameter("allowInsecure")?.takeIf { it == "1" || it == "true" }?.also {
+        link.queryParameter("insecure")?.takeIf { it == "1" }?.also {
             allowInsecure = true
         }
     }
@@ -50,7 +47,7 @@ fun AnyTLSBean.toUri(): String? {
         error("anytls must use tls")
     }
     val builder = Libexclavecore.newURL("anytls")
-    builder.setHostPort(serverAddress.ifEmpty { error("empty server address") }, serverPort)
+    builder.setHostPort(serverAddress, serverPort)
     if (password.isNotEmpty()) {
         builder.username = password
     }
@@ -60,7 +57,7 @@ fun AnyTLSBean.toUri(): String? {
     }
     // as pinned certificate is not exportable, only add `insecure=1` if pinned certificate is not used
     if (pinnedPeerCertificateChainSha256.isEmpty() && pinnedPeerCertificatePublicKeySha256.isEmpty() &&
-        pinnedPeerCertificateSha256.isEmpty() && allowInsecure) {
+        pinnedPeerCertificateSha256.isEmpty() && serverNameToVerify.listByLineOrComma().isEmpty() && allowInsecure) {
         builder.addQueryParameter("insecure", "1")
     }
     if (name.isNotEmpty()) {

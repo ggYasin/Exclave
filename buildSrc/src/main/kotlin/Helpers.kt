@@ -75,8 +75,6 @@ fun Project.setupCommon(projectName: String = "") {
         lint.checkAllWarnings = true
         lint.checkReleaseBuilds = false
         lint.warningsAsErrors = true
-        lint.textOutput = project.file("build/lint.txt")
-        lint.htmlOutput = project.file("build/lint.html")
         packaging.jniLibs.useLegacyPackaging = true
         // Do not strip symbols by AGP to improve reproducibility. Symbols are manually stripped in advanced.
         packaging.jniLibs.keepDebugSymbols.add("**/*.so")
@@ -117,8 +115,9 @@ fun Project.setupAppCommon(projectName: String = "") {
             }
         }
 
-        defaultConfig.targetSdk = 36
+        defaultConfig.targetSdk = 37
         buildTypes.getByName("release") {
+            @Suppress("UnstableApiUsage")
             vcsInfo.include = false
             signingConfigs.findByName("release")?.let {
                 signingConfig = it
@@ -132,7 +131,10 @@ fun Project.setupAppCommon(projectName: String = "") {
         }
         dependenciesInfo.includeInApk = false
         dependenciesInfo.includeInBundle = false
+        @Suppress("UnstableApiUsage")
         bundle.language.enableSplit = false
+        @Suppress("UnstableApiUsage")
+        bundle.abi.enableSplit = false
         if (gradle.startParameter.taskNames.isNotEmpty() && gradle.startParameter.taskNames.any { it.lowercase().contains("assemble") }) {
             splits.abi.apply {
                 isEnable = true
@@ -206,7 +208,12 @@ fun Project.setupApp() {
         buildFeatures.viewBinding = true
         compileOptions.isCoreLibraryDesugaringEnabled = true
         flavorDimensions.add("vendor")
-        productFlavors.create("oss")
+        productFlavors.create("oss") {
+            minSdk = 23
+        }
+        productFlavors.create("legacy") {
+            minSdk = 21
+        }
         tasks.register("downloadAssets") {
             downloadAssets(update = false)
         }
@@ -214,7 +221,6 @@ fun Project.setupApp() {
             downloadRootCAList()
             downloadAssets(update = true)
         }
-
     }
     androidComponents.apply {
         onVariants { variant ->
