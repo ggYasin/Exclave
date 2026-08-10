@@ -114,7 +114,7 @@ jobs:
           while IFS= read -r -d '' inclave_apk; do
             inclave_verify_output=$("$inclave_apksigner" verify --verbose --print-certs "$inclave_apk")
             printf '%s\n' "$inclave_verify_output"
-            inclave_actual_cert=$(printf '%s\n' "$inclave_verify_output" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            inclave_actual_cert=$(printf '%s\n' "$inclave_verify_output" | awk -F': ' '/Signer.*certificate SHA-256 digest:/ {print $NF}' | sort -u)
             test "$inclave_actual_cert" = "$inclave_expected_cert"
             inclave_apk_count=$((inclave_apk_count + 1))
           done < <(find app/build/outputs/apk/oss/release app/build/outputs/apk/legacy/release -name '*.apk' -type f -print0)
@@ -175,7 +175,7 @@ jobs:
           inclave_apk_count=0
           while IFS= read -r -d '' inclave_apk; do
             inclave_verify_output=$("$inclave_apksigner" verify --verbose --print-certs "$inclave_apk")
-            inclave_actual_cert=$(printf '%s\n' "$inclave_verify_output" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            inclave_actual_cert=$(printf '%s\n' "$inclave_verify_output" | awk -F': ' '/Signer.*certificate SHA-256 digest:/ {print $NF}' | sort -u)
             test "$inclave_actual_cert" = "$inclave_expected_cert"
             inclave_apk_count=$((inclave_apk_count + 1))
           done < <(find artifacts -name '*.apk' -type f -print0)
