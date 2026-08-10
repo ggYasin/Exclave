@@ -851,18 +851,20 @@ class ConfigurationFragment @JvmOverloads constructor(
 
     @Suppress("EXPERIMENTAL_API_USAGE")
     fun urlTest() {
+        // The synthetic "All Configs" group is intentionally not persisted in DataStore.
+        // Capture the visible tab before switching dispatchers so the test scope cannot be
+        // replaced with the first real group by DataStore.currentGroup().
+        val groupId = selectedGroup.id
         val test = TestDialog()
         val dialog = test.builder.show()
         dialog.getButton(DialogInterface.BUTTON_NEUTRAL).isEnabled = false
         val testJobs = mutableListOf<Job>()
 
         val mainJob = runOnDefaultDispatcher {
-            val group = DataStore.currentGroup()
-            val groupId = DataStore.selectedGroup
             var profilesUnfiltered = if (groupId == Long.MAX_VALUE) {
                 SagerDatabase.proxyDao.getAll()
             } else {
-                SagerDatabase.proxyDao.getByGroup(group.id)
+                SagerDatabase.proxyDao.getByGroup(groupId)
             }
             profilesUnfiltered = profilesUnfiltered.filter {
                 !it.useBrowserForwarder()
@@ -930,7 +932,7 @@ class ConfigurationFragment @JvmOverloads constructor(
         test.cancel = {
             mainJob.cancel()
             runOnDefaultDispatcher {
-                GroupManager.postReload(DataStore.selectedGroup)
+                GroupManager.postReload(groupId)
             }
         }
     }
